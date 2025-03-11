@@ -1,0 +1,11 @@
+[package]
+name = "compost"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.40"
+glob = "0.3.2"
+html-escape = "0.2.13"
+pulldown-cmark = "0.13.0"
+regex = "1.11.1"
