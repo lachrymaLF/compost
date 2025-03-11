@@ -1,17 +1,15 @@
-use std::collections::HashMap;
-use std::fs;
-use std::fs::read_to_string;
+use std::fs::{create_dir, remove_file, remove_dir_all, read_to_string, write};
 use std::path::Path;
 use std::process::Command;
 use chrono::Datelike;
 use glob::glob;
 use regex::Regex;
 use uuid::Uuid;
+use rayon::prelude::*;
+
+const CC: &str = "gcc";
 
 fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c_dir: &Path) {
-    fs::remove_dir_all(c_dir).unwrap();
-    fs::create_dir(c_dir).unwrap();
-
     let c_re = Regex::new(r"(?s)<c>(.*?)</c>").unwrap();
     while let Some(capture) = c_re.captures(&html) {
         let source_match = capture.get(1).unwrap();
@@ -68,12 +66,12 @@ int main(void)
             source_match.as_str());
 
         let id = Uuid::new_v4();
-        
+
         let c_fn = c_dir.join(format!("src_{}.c", id));
-        fs::write(&c_fn, source).unwrap();
-        
+        write(&c_fn, source).unwrap();
+
         let o_fn = c_dir.join(format!("out_{}", id));
-        let out = match Command::new("gcc").
+        let out = match Command::new(CC).
             arg(c_fn)
             .args(glob(lib_dir.join("*.o").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
             .arg("-lm")
@@ -97,7 +95,6 @@ fn do_typer_tags(contents: &mut String) {
     let mut cit = code_re.find_iter(contents);
     let mut closest_code_block = cit.next();
     let mut replacements: Vec<(core::ops::Range<usize>, String)> = vec![];
-
     'captures: for capture in typertags_re.captures_iter(&contents) {
         'advance_code: while closest_code_block.is_some() {
             let r = closest_code_block.unwrap().range();
@@ -125,13 +122,22 @@ fn do_typer_tags(contents: &mut String) {
 
         replacements.push((capture.get(0).unwrap().range(), rep));
     }
-    
+
     for (range, content) in replacements.into_iter().rev() {
         contents.replace_range(range, &content);
     }
 }
 
-fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, template: &Path, output_dir: &Path, copy_year: i32) {
+fn compose(filename: &Path,
+    lib_dir: &Path,
+    include_dir: &Path,
+    c_dir: &Path,
+    template: &Path,
+    output_dir: &Path,
+    default_thumb:
+    &str,
+    copy_year: i32
+) {
 	let mut contents: String = read_to_string(&filename).unwrap();
 
 	let mut lines = contents.lines();
@@ -139,7 +145,7 @@ fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, te
 	let description = lines.next().unwrap()[2..].to_owned();
 	let thumb = match lines.next().unwrap() {
         line if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
-        _ => "https://lachrymal.net/thumbnails/default.png".to_string(),
+        _ => default_thumb.to_string(),
     };
 
 	println!("Composing {} (\"{}\")...", filename.display(), title);
@@ -155,13 +161,13 @@ fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, te
     if let Some(r) = head_range {
         contents.replace_range(r, "");
     }
-	
+
 	do_typer_tags(&mut contents);
-    
+
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
-	
-	let map: HashMap<&str, String> = HashMap::from([
+
+	let map = [
     	("`META_PAGE_TITLE`", html_escape::encode_safe(&title).to_string()),
         ("`PAGE_TITLE`", title),
 		("`META_PAGE_DESCRIPTION`", html_escape::encode_safe(&description).to_string()),
@@ -170,20 +176,20 @@ fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, te
 		("`YEAR`", copy_year.to_string()),
 		("`META_THUMBNAIL`", thumb),
 		("`HEAD_INJECT`", head_injection)
-    ]);
-	
+    ];
+
     let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
 	let output_filename = output_dir.join(basename.clone() + ".html");
-    
+
     let mut out = read_to_string(&template).unwrap();
 
-    for (key, value) in map.into_iter() {
+    for (key, value) in map {
         out = out.replace(key, value.as_str());
     }
 
 	do_c(&mut out, &basename, &lib_dir, &include_dir, &c_dir);
 
-    fs::write(output_filename, out).unwrap();
+    write(output_filename, out).unwrap();
 }
 
 fn main() {
@@ -197,6 +203,7 @@ fn main() {
     let docroot_dir   = root_dir.join("/indev/");
     let sync_to_docroot  = false;
     let copy_year         = chrono::Utc::now().year();
+    let default_thumb    = "https://lachrymal.net/thumbnails/default.png";
 
     println!("   ______                                 __ 
   / ____/___  ____ ___  ____  ____  _____/ /_
@@ -208,20 +215,30 @@ fn main() {
     println!("Processing...");
     println!("=============");
 
-    fs::remove_dir_all(output_dir).unwrap();
-    fs::create_dir(output_dir).unwrap();
-    
-    let pages = glob(content_dir.join("*").to_str().unwrap()).unwrap();
-    for page in pages {
-    	compose(&page.unwrap(), lib_dir, include_dir, c_dir, &template_dir.join("template.html"), output_dir, copy_year);
-    }
+    remove_dir_all(output_dir).unwrap();
+    create_dir(output_dir).unwrap();
+    remove_dir_all(c_dir).unwrap();
+    create_dir(c_dir).unwrap();
+
+    let pages: Vec<_> = glob(content_dir.join("*").to_str().unwrap()).unwrap().collect();
+
+    pages.into_par_iter().for_each(|page| compose(
+        &page.unwrap(),
+        lib_dir,
+        include_dir,
+        c_dir,
+        &template_dir.join("template.html"),
+        output_dir,
+        default_thumb,
+        copy_year
+    ));
 
     if sync_to_docroot {
         println!("Updating website...");
         println!("===================");
         for html in glob(docroot_dir.join("*.html").to_str().unwrap()).unwrap() {
             match html {
-                Ok(path) => fs::remove_file(path).unwrap(),
+                Ok(path) => remove_file(path).unwrap(),
                 Err(e) => eprintln!("{:?}", e),
             }
         }
