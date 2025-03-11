@@ -12,8 +12,9 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
     fs::remove_dir_all(c_dir).unwrap();
     fs::create_dir(c_dir).unwrap();
 
-    while let Some(capture) = Regex::new(r"(?s)(<c>(.*?)</c>)").unwrap().captures(&html) {
-        let source_match = capture.get(2).unwrap();
+    let c_re = Regex::new(r"(?s)<c>(.*?)</c>").unwrap();
+    while let Some(capture) = c_re.captures(&html) {
+        let source_match = capture.get(1).unwrap();
 
         let source = format!(r#"
 #include <stdio.h>
@@ -85,48 +86,49 @@ int main(void)
             Err(e) => e.to_string()
         };
 
-        html.replace_range(capture.get(1).unwrap().range(), &out);
+        html.replace_range(capture.get(0).unwrap().range(), &out);
     }
 }
 
 fn do_typer_tags(contents: &mut String) {
-	let typertags_re = Regex::new(r#"/\[(\w+)([\s\w=\"-_~]+)?\]([\s]+)?\{([^{}]*)\}/"#).unwrap();
-	let code_re = Regex::new(r"/(```([\w-]+))\n([^`]*)(```\n)/").unwrap();
-	
-	// Figure out how many code blocks there are, so we don't process typertags inside them
-	// my @code_blocks = ();
-	// while ($contents =~ /($code_regex)/igs) {
-	// 	push @code_blocks, { language => $3, text => $4 };
-	// }
-	
-	// Now do the fun stuff; replace all "typertags" (e.g. [b]{asdf} -> <b>asdf</b>)
-	// while ($contents =~ /($typertags_regex)/igs) {
-	// 	my $tag_name = $2;
-	// 	my $tag_attributes = $3;
-	// 	my $tag_body = $5;
+	let typertags_re = Regex::new(r#"\[(\w+)](?:\s+)?\{([^{}]*)\}"#).unwrap();
+	let code_re = Regex::new(r"```.*?```").unwrap();
 
-	// 	if ($tag_name eq "note") {
-	// 		$tag_name = "div";
-	// 		$tag_attributes = "class=\"side-note\"";
-	// 		$tag_body = TyperTag($tag_body, 1);
-	// 	}
-		
-	// 	$contents =~ s/$typertags_regex/<$tag_name $tag_attributes>$tag_body<\/$tag_name>/igs;
-	// }
-	
-	// Revert any changes typertags might've made to code blocks
-	// my $i = 0;
-	// while ($contents =~ /($code_regex)/igs) {
-	// 	my @cb = %{$code_blocks[$i]};
-	// 	my $language = $code_blocks[$i]{'language'};
-	// 	my $text = ($code_blocks[$i]{'text'});
-		
-	// 	# Apply the changes
-	// 	my $first = quotemeta($1);
-	// 	$text = EscapeHTML($text);
-	// 	$contents =~ s/$first/<pre><code class="$language">$text<\/code><\/pre>/igs;
-	// 	$i++;
-	// }
+    let mut cit = code_re.find_iter(contents);
+    let mut closest_code_block = cit.next();
+    let mut replacements: Vec<(core::ops::Range<usize>, String)> = vec![];
+
+    'captures: for capture in typertags_re.captures_iter(&contents) {
+        'advance_code: while closest_code_block.is_some() {
+            let r = closest_code_block.unwrap().range();
+            let start = capture.get(0).unwrap().start();
+            if r.contains(&start) {
+                continue 'captures
+            }
+            else if r.end < start {
+                closest_code_block = cit.next();
+            }
+            else {
+                break 'advance_code
+            }
+        }
+        let (full, [tag_name, tag_body]) = capture.extract();
+
+        let rep = match tag_name {
+            "note" => {
+                let mut html = String::new();
+                pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&tag_body));
+                format!(r#"<div class="note">{html}</div>"#)
+            },
+            _ => full.to_owned(),
+        };
+
+        replacements.push((capture.get(0).unwrap().range(), rep));
+    }
+    
+    for (range, content) in replacements.into_iter().rev() {
+        contents.replace_range(range, &content);
+    }
 }
 
 fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, template: &Path, output_dir: &Path, copy_year: i32) {
@@ -144,9 +146,9 @@ fn compose(filename: &Path, lib_dir: &Path, include_dir: &Path, c_dir: &Path, te
 
 	contents = Regex::new(r"(?m)^%\s*.*").unwrap().replace_all(&contents, "").to_string();
 
-	let head_capture = Regex::new(r"(?s)(<\#inject_head\#>(.*?)</\#inject_head\#>)").unwrap().captures(&contents);
+	let head_capture = Regex::new(r"(?s)<\#inject_head\#>(.*?)</\#inject_head\#>").unwrap().captures(&contents);
     let (head_injection, head_range) = match head_capture {
-        Some(head) => (head.get(2).unwrap().as_str().to_string(), Some(head.get(1).unwrap().range())),
+        Some(head) => (head.get(1).unwrap().as_str().to_string(), Some(head.get(0).unwrap().range())),
         None => ("".to_string(), None),
 	};
 
@@ -211,7 +213,7 @@ fn main() {
     
     let pages = glob(content_dir.join("*").to_str().unwrap()).unwrap();
     for page in pages {
-    	compose(&page.unwrap(), lib_dir, include_dir, c_dir, &template_dir.join("lach.html"), output_dir, copy_year);
+    	compose(&page.unwrap(), lib_dir, include_dir, c_dir, &template_dir.join("template.html"), output_dir, copy_year);
     }
 
     if sync_to_docroot {
