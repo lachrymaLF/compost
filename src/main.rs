@@ -114,11 +114,8 @@ fn compose(filename: &Path,
 	let title = lines.next().unwrap()[2..].to_owned();
 	let description = lines.next().unwrap()[2..].to_owned();
 	let thumb = match lines.next() {
-        Some(d) => match d {
-            line if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
-            _ => default_thumb.to_string(),
-        }
-        None => default_thumb.to_string()
+        Some(line) if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
+        _ => default_thumb.to_string(),
     };
 
 	println!("Composing {} (\"{}\")...", filename.display(), title);
