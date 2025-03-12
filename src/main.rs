@@ -24,41 +24,11 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-// Utility library inline C code can use to generate cool stuff
 #include "kpw_web_utils.h"
-
-// Built-in macros
-#define Length(arr) \\
-arr ## _LEN
-
-#define HashValue(hash, key) \\
-hash ## _VALS[ \\
-    HashValueIndex(key, hash ## _KEYS, hash ## _LEN) \\
-]
-
-// Built-in functions (just a lazy linear search for a string array index rn)
-int HashValueIndex(const char *key, const char **keys_arr, size_t keys_arr_len)
-{{
-    for (int i = 0; i < keys_arr_len; i++)
-    {{
-        if (strcmp(keys_arr[i], key) == 0)
-            return i;
-    }}
-    
-    return -1;
-}}
-
-// This article's .md file
 #define THIS_FILE "content/{}.md"
-
-// This article's filename without the extension or path
 #define THIS_BASENAME "{}"
-
-int main(void)
-{{
+int main(void) {{
     {}
-    
     return 0;
 }}"#,
             basename,
