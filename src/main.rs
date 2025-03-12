@@ -215,9 +215,9 @@ fn main() {
     println!("Processing...");
     println!("=============");
 
-    remove_dir_all(output_dir).unwrap();
+    remove_dir_all(output_dir)?;
     create_dir(output_dir).unwrap();
-    remove_dir_all(c_dir).unwrap();
+    remove_dir_all(c_dir)?;
     create_dir(c_dir).unwrap();
 
     let pages: Vec<_> = glob(content_dir.join("*").to_str().unwrap()).unwrap().collect();
