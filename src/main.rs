@@ -80,7 +80,7 @@ fn do_typer_tags(contents: &mut String) {
                 break 'advance_code
             }
         }
-        let (full, [tag_name, tag_body]) = capture.extract();
+        let (_, [tag_name, tag_body]) = capture.extract();
 
         let rep = match tag_name {
             "note" => {
@@ -88,7 +88,7 @@ fn do_typer_tags(contents: &mut String) {
                 pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&tag_body));
                 format!(r#"<div class="note">{html}</div>"#)
             },
-            _ => full.to_owned(),
+            _ => tag_body.to_owned(),
         };
 
         replacements.push((capture.get(0).unwrap().range(), rep));
@@ -99,7 +99,8 @@ fn do_typer_tags(contents: &mut String) {
     }
 }
 
-fn compose(filename: &Path,
+fn compose(
+    filename: &Path,
     lib_dir: &Path,
     include_dir: &Path,
     c_dir: &Path,
@@ -181,11 +182,11 @@ fn main() -> Result<(), std::io::Error> {
     let dir = current_exe().unwrap().parent().unwrap().to_owned();
     set_current_dir(&dir).unwrap();
 
-    println!("   ______                                 __ 
+    println!("   ______                                 __
   / ____/___  ____ ___  ____  ____  _____/ /_
  / /   / __ \\/ __ `__ \\/ __ \\/ __ \\/ ___/ __/
-/ /___/ /_/ / / / / / / /_/ / /_/ (__  ) /_  
-\\____/\\____/_/ /_/ /_/ .___/\\____/____/\\__/  
+/ /___/ /_/ / / / / / / /_/ / /_/ (__  ) /_
+\\____/\\____/_/ /_/ /_/ .___/\\____/____/\\__/
                     /_/                      ");
 
     println!("Processing directory {}...", dir.display());
