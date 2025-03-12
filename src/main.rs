@@ -143,9 +143,12 @@ fn compose(filename: &Path,
 	let mut lines = contents.lines();
 	let title = lines.next().unwrap()[2..].to_owned();
 	let description = lines.next().unwrap()[2..].to_owned();
-	let thumb = match lines.next().unwrap() {
-        line if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
-        _ => default_thumb.to_string(),
+	let thumb = match lines.next() {
+        Some(d) => match d {
+            line if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
+            _ => default_thumb.to_string(),
+        }
+        None => default_thumb.to_string()
     };
 
 	println!("Composing {} (\"{}\")...", filename.display(), title);
@@ -192,7 +195,7 @@ fn compose(filename: &Path,
     write(output_filename, out).unwrap();
 }
 
-fn main() {
+fn main() -> Result<(), std::io::Error> {
     let lib_dir         = Path::new("./lib/");
     let include_dir     = Path::new("./include/");
     let c_dir           = Path::new("./bin/");
@@ -221,7 +224,6 @@ fn main() {
     create_dir(c_dir).unwrap();
 
     let pages: Vec<_> = glob(content_dir.join("*").to_str().unwrap()).unwrap().collect();
-
     pages.into_par_iter().for_each(|page| compose(
         &page.unwrap(),
         lib_dir,
@@ -249,4 +251,6 @@ fn main() {
                 .spawn()
                 .unwrap();
     }
+
+    Ok(())
 }
