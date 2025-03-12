@@ -1,3 +1,3 @@
 target/
-bin/
-out/
+example_site/bin/
+example_site/out/

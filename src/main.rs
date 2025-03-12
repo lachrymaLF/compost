@@ -1,3 +1,4 @@
+use std::env::{current_exe, set_current_dir};
 use std::fs::{create_dir, remove_file, remove_dir_all, read_to_string, write};
 use std::path::Path;
 use std::process::Command;
@@ -177,6 +178,9 @@ fn main() -> Result<(), std::io::Error> {
     let copy_year         = chrono::Utc::now().year();
     let default_thumb    = "https://lachrymal.net/thumbnails/default.png";
 
+    let dir = current_exe().unwrap().parent().unwrap().to_owned();
+    set_current_dir(&dir).unwrap();
+
     println!("   ______                                 __ 
   / ____/___  ____ ___  ____  ____  _____/ /_
  / /   / __ \\/ __ `__ \\/ __ \\/ __ \\/ ___/ __/
@@ -184,13 +188,13 @@ fn main() -> Result<(), std::io::Error> {
 \\____/\\____/_/ /_/ /_/ .___/\\____/____/\\__/  
                     /_/                      ");
 
-    println!("Processing...");
+    println!("Processing directory {}...", dir.display());
     println!("=============");
 
-    remove_dir_all(output_dir)?;
-    create_dir(output_dir).unwrap();
-    remove_dir_all(c_dir)?;
-    create_dir(c_dir).unwrap();
+    let _ = remove_dir_all(output_dir);
+    create_dir(output_dir).expect("Could not create output directory for pages.");
+    let _ = remove_dir_all(c_dir);
+    create_dir(c_dir).expect("Could not create output directory for C.");
 
     let pages: Vec<_> = glob(content_dir.join("*").to_str().unwrap()).unwrap().collect();
     pages.into_par_iter().for_each(|page| compose(
@@ -207,7 +211,8 @@ fn main() -> Result<(), std::io::Error> {
     if sync_to_docroot {
         println!("Updating website...");
         println!("===================");
-        for html in glob(docroot_dir.join("*.html").to_str().unwrap()).unwrap() {
+        for html in glob(docroot_dir.join("*.html").to_str().unwrap())
+            .expect("The docroot directory could not be found... You may need to recompile.") {
             match html {
                 Ok(path) => remove_file(path).unwrap(),
                 Err(e) => eprintln!("{:?}", e),
