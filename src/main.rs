@@ -50,7 +50,7 @@ int HashValueIndex(const char *key, const char **keys_arr, size_t keys_arr_len)
 }}
 
 // This article's .md file
-#define THIS_FILE "{}.md"
+#define THIS_FILE "content/{}.md"
 
 // This article's filename without the extension or path
 #define THIS_BASENAME "{}"
@@ -167,6 +167,9 @@ fn compose(filename: &Path,
 
 	do_typer_tags(&mut contents);
 
+    let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
+    do_c(&mut contents, &basename, &lib_dir, &include_dir, &c_dir);
+
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
 
@@ -181,7 +184,6 @@ fn compose(filename: &Path,
 		("`HEAD_INJECT`", head_injection)
     ];
 
-    let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
 	let output_filename = output_dir.join(basename.clone() + ".html");
 
     let mut out = read_to_string(&template).unwrap();
