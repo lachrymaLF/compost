@@ -67,8 +67,8 @@ fn do_typer_tags(contents: &mut String) {
     let mut closest_code_block = cit.next();
     let mut replacements: Vec<(core::ops::Range<usize>, String)> = vec![];
     'captures: for capture in typertags_re.captures_iter(&contents) {
-        'advance_code: while closest_code_block.is_some() {
-            let r = closest_code_block.unwrap().range();
+        'advance_code: while let Some(code) = closest_code_block {
+            let r = code.range();
             let start = capture.get(0).unwrap().start();
             if r.contains(&start) {
                 continue 'captures
