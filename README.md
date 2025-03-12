@@ -1,7 +1,7 @@
-# Compost
-kpw_compose-ng
+# Compost (kpw_compose-ng)
+Static site generator with infamous `<c>` tags.
 
-# Run the example
+## Run the example
 Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started).
 ```sh
 # Build compost
