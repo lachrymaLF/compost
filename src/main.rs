@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 const CC: &str = "gcc";
 
-fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c_dir: &Path) {
+fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c_dir: &Path, c_prelude: &str) {
     let c_re = Regex::new(r"(?s)<c>(.*?)</c>").unwrap();
     while let Some(capture) = c_re.captures(&html) {
         let source_match = capture.get(1).unwrap();
@@ -22,7 +22,7 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
                 {}
                 return 0;
             }}"#,
-            include_str!("prelude.c"),
+            c_prelude,
             basename,
             if basename == "index" { "home" } else { basename },
             source_match.as_str());
@@ -98,7 +98,8 @@ fn compose(
     template: &Path,
     output_dir: &Path,
     default_thumb: &str,
-    copy_year: i32
+    copy_year: i32,
+    c_prelude: &str
 ) {
 	let mut contents: String = read_to_string(&filename).unwrap();
 
@@ -127,7 +128,7 @@ fn compose(
 	do_typer_tags(&mut contents);
 
     let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
-    do_c(&mut contents, &basename, &lib_dir, &include_dir, &c_dir);
+    do_c(&mut contents, &basename, &lib_dir, &include_dir, &c_dir, c_prelude);
 
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
@@ -145,13 +146,13 @@ fn compose(
 
 	let output_filename = output_dir.join(basename.clone() + ".html");
 
-    let mut out = read_to_string(&template).unwrap();
+    let mut out = read_to_string(&template).expect("The specified template could not be found...");
 
     for (key, value) in map {
         out = out.replace(key, value.as_str());
     }
 
-	do_c(&mut out, &basename, &lib_dir, &include_dir, &c_dir);
+	do_c(&mut out, &basename, &lib_dir, &include_dir, &c_dir, c_prelude);
 
     write(output_filename, out).unwrap();
 }
@@ -165,21 +166,23 @@ fn main() -> Result<(), std::io::Error> {
     let output_dir   = Path::new("./out/");
     let copy_year    = chrono::Utc::now().year();
 
-    let mut thumb           = "https://lachrymal.net/thumbnails/default.png";
-    let mut docroot_dir     = Path::new("");
-    let mut sync_to_docroot = false;
+    let mut template_fn     = "template.html";
+    let mut thumb           = "";
+    let mut prelude_path    = Path::new("prelude.c");
+    let mut docroot_dir: Option<&str> = None;
 
     let args: Vec<_> = args().skip(1).collect();
     for arg in args.chunks(2) {
         match arg[0].as_str() {
-            "thumb" => thumb = arg[1].as_str(),
-            "sync_to" => {
-                sync_to_docroot = true;
-                docroot_dir = Path::new(arg[1].as_str());
-            },
+            "--thumb"    => thumb        = arg[1].as_str(),
+            "--sync_to"  => docroot_dir  = Some(arg[1].as_str()),
+            "--prelude"  => prelude_path = Path::new(arg[1].as_str()),
+            "--template" => template_fn  = arg[1].as_str(),
             _ => panic!("Unrecognized option: {}", arg[0])
         }
     }
+
+    let c_prelude = read_to_string(prelude_path).expect("Could not find C prelude...");
 
     let dir = current_exe().unwrap().parent().unwrap().to_owned();
     set_current_dir(&dir).unwrap();
@@ -205,26 +208,30 @@ fn main() -> Result<(), std::io::Error> {
         lib_dir,
         include_dir,
         c_dir,
-        &template_dir.join("template.html"),
+        &template_dir.join(template_fn),
         output_dir,
         thumb,
-        copy_year
+        copy_year,
+        c_prelude.as_str()
     ));
 
-    if sync_to_docroot {
+    if let Some(dir) = docroot_dir {
+        let path = Path::new(dir);
+
         println!("Updating website...");
         println!("===================");
-        for html in glob(docroot_dir.join("*.html").to_str().unwrap())
+
+        for html in glob(path.join("*.html").to_str().unwrap())
             .expect("The specified directory could not be found...") {
             match html {
-                Ok(path) => remove_file(path).unwrap(),
+                Ok(f) => remove_file(f).unwrap(),
                 Err(e) => eprintln!("{:?}", e),
             }
         }
         Command::new("rsync")
                 .arg("-avh")
                 .arg(output_dir)
-                .arg(docroot_dir)
+                .arg(path)
                 .spawn()
                 .unwrap();
     }
