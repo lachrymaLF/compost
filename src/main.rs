@@ -29,10 +29,10 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
 
         let id = Uuid::new_v4();
 
-        let c_fn = c_dir.join(format!("src_{}.c", id));
+        let c_fn = c_dir.join(format!("src_{basename}_{id}.c"));
         write(&c_fn, source).unwrap();
 
-        let o_fn = c_dir.join(format!("out_{}", id));
+        let o_fn = c_dir.join(format!("out_{basename}_{id}"));
         let out = match Command::new(CC).
             arg(c_fn)
             .args(glob(lib_dir.join("*.o").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
