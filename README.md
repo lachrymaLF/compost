@@ -20,10 +20,15 @@ sh lib/build.sh
 ```
 Built pages will be in example_site/out.
 
+## Command Options
+- `compost thumb <URL>`: sets `META_THUMBNAIL` in templates, it should be an absolute URL because it is supposed to be used in meta tags.
+- `compost sync_to <path>`: runs `rsync -avh ./out/ <path>` after building.
+
 ## Constructs
 `<c>` tags are valid in `content/*.md` files, as well as templates themselves.
 The contents of each `<c>` block will be run in a C function, and the stdout will replace the `<c>` tag itself.
 The prelude in the initial configuration example includes `stb_image.h`, `stb_image_write.h` for image processing capabilities, as well as `kpw_web_utils.h`.
+When the prelude `prelude.c` is changed, you need to recompile compost.
 Check for `do_c` in `src/main.rs` for more information.
 
 ## TyperTags

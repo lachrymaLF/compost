@@ -1,4 +1,4 @@
-use std::env::{current_exe, set_current_dir};
+use std::env::{current_exe, set_current_dir, args};
 use std::fs::{create_dir, remove_file, remove_dir_all, read_to_string, write};
 use std::path::Path;
 use std::process::Command;
@@ -15,23 +15,14 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
     while let Some(capture) = c_re.captures(&html) {
         let source_match = capture.get(1).unwrap();
 
-        let source = format!(r#"
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <string.h>
-#include <stdarg.h>
-#include <math.h>
-#include <time.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include "kpw_web_utils.h"
-#define THIS_FILE "content/{}.md"
-#define THIS_BASENAME "{}"
-int main(void) {{
-    {}
-    return 0;
-}}"#,
+        let source = format!(r#"{}
+            #define THIS_FILE "content/{}.md"
+            #define THIS_BASENAME "{}"
+            int main(void) {{
+                {}
+                return 0;
+            }}"#,
+            include_str!("prelude.c"),
             basename,
             if basename == "index" { "home" } else { basename },
             source_match.as_str());
@@ -106,8 +97,7 @@ fn compose(
     c_dir: &Path,
     template: &Path,
     output_dir: &Path,
-    default_thumb:
-    &str,
+    default_thumb: &str,
     copy_year: i32
 ) {
 	let mut contents: String = read_to_string(&filename).unwrap();
@@ -167,17 +157,29 @@ fn compose(
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let lib_dir         = Path::new("./lib/");
-    let include_dir     = Path::new("./include/");
-    let c_dir           = Path::new("./bin/");
-    let template_dir    = Path::new("./templates/");
-    let content_dir     = Path::new("./content/");
-    let output_dir      = Path::new("./out/");
-    let root_dir        = Path::new("/var/www/lachrymal.net/public_html");
-    let docroot_dir   = root_dir.join("/indev/");
-    let sync_to_docroot  = false;
-    let copy_year         = chrono::Utc::now().year();
-    let default_thumb    = "https://lachrymal.net/thumbnails/default.png";
+    let lib_dir      = Path::new("./lib/");
+    let include_dir  = Path::new("./include/");
+    let c_dir        = Path::new("./bin/");
+    let template_dir = Path::new("./templates/");
+    let content_dir  = Path::new("./content/");
+    let output_dir   = Path::new("./out/");
+    let copy_year    = chrono::Utc::now().year();
+
+    let mut thumb           = "https://lachrymal.net/thumbnails/default.png";
+    let mut docroot_dir     = Path::new("");
+    let mut sync_to_docroot = false;
+
+    let args: Vec<_> = args().skip(1).collect();
+    for arg in args.chunks(2) {
+        match arg[0].as_str() {
+            "thumb" => thumb = arg[1].as_str(),
+            "sync_to" => {
+                sync_to_docroot = true;
+                docroot_dir = Path::new(arg[1].as_str());
+            },
+            _ => panic!("Unrecognized option: {}", arg[0])
+        }
+    }
 
     let dir = current_exe().unwrap().parent().unwrap().to_owned();
     set_current_dir(&dir).unwrap();
@@ -205,7 +207,7 @@ fn main() -> Result<(), std::io::Error> {
         c_dir,
         &template_dir.join("template.html"),
         output_dir,
-        default_thumb,
+        thumb,
         copy_year
     ));
 
@@ -213,7 +215,7 @@ fn main() -> Result<(), std::io::Error> {
         println!("Updating website...");
         println!("===================");
         for html in glob(docroot_dir.join("*.html").to_str().unwrap())
-            .expect("The docroot directory could not be found... You may need to recompile.") {
+            .expect("The specified directory could not be found...") {
             match html {
                 Ok(path) => remove_file(path).unwrap(),
                 Err(e) => eprintln!("{:?}", e),
