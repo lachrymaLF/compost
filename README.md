@@ -2,7 +2,7 @@
 Static site generator with infamous `<c>` tags.
 
 ## Run the example
-Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started).
+Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started) and `gcc` is available.
 ```sh
 # Build compost
 cargo build -r
