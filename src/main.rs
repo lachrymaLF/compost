@@ -1,5 +1,6 @@
 use std::env::{current_exe, set_current_dir, args};
 use std::fs::{create_dir, remove_file, remove_dir_all, read_to_string, write};
+use std::borrow::Cow;
 use std::path::Path;
 use std::process::Command;
 use chrono::Datelike;
@@ -7,10 +8,31 @@ use glob::glob;
 use regex::Regex;
 use uuid::Uuid;
 use rayon::prelude::*;
+use serde::{Serialize, Deserialize};
+use toml;
 
-const CC: &str = "gcc";
+#[derive(Serialize, Deserialize)]
+struct Config< 'a> {
+    cc:             Cow<'a, str>,
+    im:             Cow<'a, str>,
 
-fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c_dir: &Path, c_prelude: &str) {
+    lib_dir:        Cow<'a, Path>,
+    include_dir:    Cow<'a, Path>,
+    c_dir:          Cow<'a, Path>,
+    template_dir:   Cow<'a, Path>,
+    content_dir:    Cow<'a, Path>,
+    output_dir:     Cow<'a, Path>,
+    copy_year:      i32,
+    root_url:       Cow<'a, str>,
+    thumbnails_dir: Cow<'a, str>,
+    template_fn:    Cow<'a, str>,
+    default_thumb:  Cow<'a, str>,
+    prelude_path:   Cow<'a, Path>,
+    font_fn:        Cow<'a, str>,
+    docroot_dir:    Option<Cow<'a, str>>,
+}
+
+fn do_c(html: &mut String, basename: &str, config: &Config, c_prelude: &str) {
     let c_re = Regex::new(r"(?s)<c>(.*?)</c>").unwrap();
     while let Some(capture) = c_re.captures(&html) {
         let source_match = capture.get(1).unwrap();
@@ -29,16 +51,16 @@ fn do_c(html: &mut String, basename: &str, lib_dir: &Path, include_dir: &Path, c
 
         let id = Uuid::new_v4();
 
-        let c_fn = c_dir.join(format!("src_{basename}_{id}.c"));
+        let c_fn = config.c_dir.join(format!("src_{basename}_{id}.c"));
         write(&c_fn, source).unwrap();
 
-        let o_fn = c_dir.join(format!("out_{basename}_{id}"));
-        let out = match Command::new(CC).
+        let o_fn = config.c_dir.join(format!("out_{basename}_{id}"));
+        let out = match Command::new(config.cc.as_ref()).
             arg(c_fn)
-            .args(glob(lib_dir.join("*.o").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
+            .args(glob(config.lib_dir.join("*.o").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
             .arg("-lm")
             .arg("-I")
-            .arg(include_dir)
+            .arg(config.include_dir.as_ref())
             .arg("-o")
             .arg(&o_fn)
             .status() {
@@ -92,13 +114,8 @@ fn do_typer_tags(contents: &mut String) {
 
 fn compose(
     filename: &Path,
-    lib_dir: &Path,
-    include_dir: &Path,
-    c_dir: &Path,
-    template: &Path,
-    output_dir: &Path,
-    default_thumb: &str,
-    copy_year: i32,
+    config: &Config,
+    template: &str,
     c_prelude: &str
 ) {
 	let mut contents: String = read_to_string(&filename).unwrap();
@@ -106,9 +123,38 @@ fn compose(
 	let mut lines = contents.lines();
 	let title = lines.next().unwrap()[2..].to_owned();
 	let description = lines.next().unwrap()[2..].to_owned();
+	let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
 	let thumb = match lines.next() {
         Some(line) if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
-        _ => default_thumb.to_string(),
+        _ => {
+            let thumb = format!("{}{basename}.png", config.thumbnails_dir);
+            format!("{}{}", config.root_url, match Command::new(config.im.as_ref())
+                    .arg("default.png")
+                    .arg("(")
+                    .arg("-size").arg("1200x200")
+                    .arg("gradient:transparent-black")
+                    .arg(")")
+                    .arg("-gravity").arg("South")
+                    .arg("-compose").arg("Over")
+                    .arg("-composite")
+                    .arg("(")
+                    .arg("-fill").arg("white")
+                    .arg("-background").arg("transparent")
+                    .arg("-size").arg("1150x150")
+                    .arg("-font").arg("LMRoman10-Regular")
+                    .arg("-gravity").arg("SouthWest")
+                    .arg(format!("caption:{title}"))
+                    .arg(")")
+                    .arg("-gravity").arg("South")
+                    .arg("-compose").arg("Over")
+                    .arg("-composite")
+                    .arg(config.output_dir.join(&thumb))
+                    .status() {
+                        Ok(_) => thumb.as_str(),
+                        Err(_) => config.default_thumb.as_ref(),
+                    }
+            )
+        },
     };
 
 	println!("Composing {} (\"{}\")...", filename.display(), title);
@@ -127,8 +173,7 @@ fn compose(
 
 	do_typer_tags(&mut contents);
 
-    let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
-    do_c(&mut contents, &basename, &lib_dir, &include_dir, &c_dir, c_prelude);
+    do_c(&mut contents, &basename, &config, c_prelude);
 
     let mut html = String::new();
     pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
@@ -139,50 +184,45 @@ fn compose(
 		("`META_PAGE_DESCRIPTION`", html_escape::encode_safe(&description).to_string()),
 		("`PAGE_DESCRIPTION`", description),
 		("`CONTENT`", html),
-		("`YEAR`", copy_year.to_string()),
+		("`YEAR`", config.copy_year.to_string()),
 		("`META_THUMBNAIL`", thumb),
 		("`HEAD_INJECT`", head_injection)
     ];
 
-	let output_filename = output_dir.join(basename.clone() + ".html");
+	let output_filename = config.output_dir.join(basename.clone() + ".html");
 
-    let mut out = read_to_string(&template).expect("The specified template could not be found...");
+    let mut out = template.to_owned();
 
     for (key, value) in map {
         out = out.replace(key, value.as_str());
     }
 
-	do_c(&mut out, &basename, &lib_dir, &include_dir, &c_dir, c_prelude);
+	do_c(&mut out, &basename, &config, c_prelude);
 
     write(output_filename, out).unwrap();
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let lib_dir      = Path::new("./lib/");
-    let include_dir  = Path::new("./include/");
-    let c_dir        = Path::new("./bin/");
-    let template_dir = Path::new("./templates/");
-    let content_dir  = Path::new("./content/");
-    let output_dir   = Path::new("./out/");
-    let copy_year    = chrono::Utc::now().year();
+    let config = toml::from_str(read_to_string(args().skip(1).next().as_ref().map_or("compost.toml", String::as_str)).unwrap().as_str()).unwrap_or(Config {
+        cc             : Cow::Borrowed("gcc"),
+        im             : Cow::Borrowed("convert"),
+        lib_dir        : Cow::Borrowed(Path::new("./lib/")),
+        include_dir    : Cow::Borrowed(Path::new("./include/")),
+        c_dir          : Cow::Borrowed(Path::new("./bin/")),
+        template_dir   : Cow::Borrowed(Path::new("./templates/")),
+        content_dir    : Cow::Borrowed(Path::new("./content/")),
+        output_dir     : Cow::Borrowed(Path::new("./out/")),
+        copy_year      : chrono::Utc::now().year(),
+        root_url       : Cow::Borrowed("https://lachrymal.net/"),
+        thumbnails_dir : Cow::Borrowed("thumbnails/"),
+        font_fn        : Cow::Borrowed("Helvetica"),
+        template_fn    : Cow::Borrowed("template.html"),
+        default_thumb  : Cow::Borrowed("default.png"),
+        prelude_path   : Cow::Borrowed(Path::new("prelude.c")),
+        docroot_dir    : None,
+    });
 
-    let mut template_fn     = "template.html";
-    let mut thumb           = "";
-    let mut prelude_path    = Path::new("prelude.c");
-    let mut docroot_dir: Option<&str> = None;
-
-    let args: Vec<_> = args().skip(1).collect();
-    for arg in args.chunks(2) {
-        match arg[0].as_str() {
-            "--thumb"    => thumb        = arg[1].as_str(),
-            "--sync_to"  => docroot_dir  = Some(arg[1].as_str()),
-            "--prelude"  => prelude_path = Path::new(arg[1].as_str()),
-            "--template" => template_fn  = arg[1].as_str(),
-            _ => panic!("Unrecognized option: {}", arg[0])
-        }
-    }
-
-    let c_prelude = read_to_string(prelude_path).expect("Could not find C prelude...");
+    let c_prelude = read_to_string(&config.prelude_path).expect("Could not find C prelude...");
 
     let dir = current_exe().unwrap().parent().unwrap().to_owned();
     set_current_dir(&dir).unwrap();
@@ -197,26 +237,18 @@ fn main() -> Result<(), std::io::Error> {
     println!("Processing directory {}...", dir.display());
     println!("=============");
 
-    let _ = remove_dir_all(output_dir);
-    create_dir(output_dir).expect("Could not create output directory for pages.");
-    let _ = remove_dir_all(c_dir);
-    create_dir(c_dir).expect("Could not create output directory for C.");
+    _ = remove_dir_all(&config.output_dir);
+    create_dir(&config.output_dir).expect("Could not create output directory for pages.");
+    create_dir("./out/thumbnails").expect("Could not create output directory for thumbnails.");
+    _ = remove_dir_all(&config.c_dir);
+    create_dir(&config.c_dir).expect("Could not create output directory for C.");
 
-    let pages: Vec<_> = glob(content_dir.join("*").to_str().unwrap()).unwrap().collect();
-    pages.into_par_iter().for_each(|page| compose(
-        &page.unwrap(),
-        lib_dir,
-        include_dir,
-        c_dir,
-        &template_dir.join(template_fn),
-        output_dir,
-        thumb,
-        copy_year,
-        c_prelude.as_str()
-    ));
+    let pages: Vec<_> = glob(config.content_dir.join("*").to_str().unwrap()).unwrap().collect();
+    let template = read_to_string(&config.template_dir.join(config.template_fn.as_ref())).expect("The specified template could not be found...");
+    pages.into_par_iter().for_each(|page| compose(&page.unwrap(), &config, &template, c_prelude.as_str()));
 
-    if let Some(dir) = docroot_dir {
-        let path = Path::new(dir);
+    if let Some(dir) = config.docroot_dir {
+        let path = Path::new(dir.as_ref());
 
         println!("Updating website...");
         println!("===================");
@@ -230,7 +262,7 @@ fn main() -> Result<(), std::io::Error> {
         }
         Command::new("rsync")
                 .arg("-avh")
-                .arg(output_dir)
+                .arg(config.output_dir.as_ref())
                 .arg(path)
                 .spawn()
                 .unwrap();

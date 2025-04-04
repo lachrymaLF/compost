@@ -2,7 +2,7 @@
 Static site generator with infamous `<c>` tags.
 
 ## Run the example
-Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started) and `gcc` is available.
+Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started) and `gcc` and `convert` (ImageMagick) are available.
 ```sh
 # Build compost
 cargo build -r
@@ -20,11 +20,26 @@ sh lib/build.sh
 ```
 Built pages will be in example_site/out.
 
-## Command Options
-- `--prelude <filename>`: specifies the filename of the C prelude (before `main()`) to use. Default: `./prelude.c`.
-- `--template <filename>`: specifies the filename of the HTML template to use inside `./templates/`. Default: `template.html`.
-- `--thumb <URL>`: sets `META_THUMBNAIL` in templates, it should be an absolute URL because it is supposed to be used in meta tags. Default: empty.
-- `--sync_to <path>`: runs `rsync -avh ./out/ <path>` after building. Does not perform rsync if not specified.
+## Configuration
+Look at example_site/compost.toml for an example. `compost` will look for `compost.toml` in the same directory by default. You can also provide a different config to `compost` via its first command-line argument.
+
+```toml
+cc = "gcc"              # CC needs to be GCC-compatible (e.g. clang)
+im = "convert"          # ImageMagick
+lib_dir = "./lib/"
+include_dir = "./include/"
+c_dir = "./bin/"
+template_dir = "./templates/"
+content_dir = "./content/"
+output_dir = "./out/"
+copy_year = 2025
+root_url = "https://lachrymal.net/"
+thumbnails_dir = "thumbnails/"
+template_fn = "template.html"
+default_thumb = "default.png"
+prelude_path = "prelude.c"
+font_fn = "lmroman10-regular.otf"
+```
 
 ## Constructs
 `<c>` tags are valid in `content/*.md` files, as well as templates themselves.
