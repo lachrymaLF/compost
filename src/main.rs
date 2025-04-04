@@ -203,7 +203,24 @@ fn compose(
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let config: Config = toml::from_str(read_to_string(args().skip(1).next().as_ref().map_or("compost.toml", String::as_str)).unwrap().as_str()).unwrap();
+    let config = toml::from_str(read_to_string(args().skip(1).next().as_ref().map_or("compost.toml", String::as_str)).unwrap().as_str()).unwrap_or(Config {
+        cc             : Cow::Borrowed("gcc"),
+        im             : Cow::Borrowed("convert"),
+        lib_dir        : Cow::Borrowed(Path::new("./lib/")),
+        include_dir    : Cow::Borrowed(Path::new("./include/")),
+        c_dir          : Cow::Borrowed(Path::new("./bin/")),
+        template_dir   : Cow::Borrowed(Path::new("./templates/")),
+        content_dir    : Cow::Borrowed(Path::new("./content/")),
+        output_dir     : Cow::Borrowed(Path::new("./out/")),
+        copy_year      : chrono::Utc::now().year(),
+        root_url       : Cow::Borrowed("https://lachrymal.net/"),
+        thumbnails_dir : Cow::Borrowed("thumbnails/"),
+        font_fn        : Cow::Borrowed("Helvetica"),
+        template_fn    : Cow::Borrowed("template.html"),
+        default_thumb  : Cow::Borrowed("default.png"),
+        prelude_path   : Cow::Borrowed(Path::new("prelude.c")),
+        docroot_dir    : None,
+    });
 
     let c_prelude = read_to_string(&config.prelude_path).expect("Could not find C prelude...");
 
