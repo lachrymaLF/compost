@@ -141,7 +141,7 @@ fn compose(
                     .arg("-fill").arg("white")
                     .arg("-background").arg("transparent")
                     .arg("-size").arg("1150x150")
-                    .arg("-font").arg("LMRoman10-Regular")
+                    .arg("-font").arg(config.font_fn.as_ref())
                     .arg("-gravity").arg("SouthWest")
                     .arg(format!("caption:{title}"))
                     .arg(")")
