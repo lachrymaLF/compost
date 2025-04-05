@@ -12,14 +12,13 @@ use serde::{Serialize, Deserialize};
 use toml;
 
 #[derive(Serialize, Deserialize)]
-struct Config< 'a> {
+struct Config<'a> {
     cc:             Cow<'a, str>,
     im:             Cow<'a, str>,
 
     lib_dir:        Cow<'a, Path>,
     include_dir:    Cow<'a, Path>,
     c_dir:          Cow<'a, Path>,
-    template_dir:   Cow<'a, Path>,
     content_dir:    Cow<'a, Path>,
     output_dir:     Cow<'a, Path>,
     copy_year:      i32,
@@ -131,7 +130,7 @@ fn compose(
             format!("{}{}", config.root_url, match Command::new(config.im.as_ref())
                     .arg(config.default_thumb.as_ref())
                     .arg("(")
-                    .arg("-size").arg("1200x200")
+                    .arg("-size").arg("1200x320")
                     .arg("gradient:transparent-black")
                     .arg(")")
                     .arg("-gravity").arg("South")
@@ -209,7 +208,6 @@ fn main() -> Result<(), std::io::Error> {
         lib_dir        : Cow::Borrowed(Path::new("./lib/")),
         include_dir    : Cow::Borrowed(Path::new("./include/")),
         c_dir          : Cow::Borrowed(Path::new("./bin/")),
-        template_dir   : Cow::Borrowed(Path::new("./templates/")),
         content_dir    : Cow::Borrowed(Path::new("./content/")),
         output_dir     : Cow::Borrowed(Path::new("./out/")),
         copy_year      : chrono::Utc::now().year(),
@@ -244,7 +242,7 @@ fn main() -> Result<(), std::io::Error> {
     create_dir(&config.c_dir).expect("Could not create output directory for C.");
 
     let pages: Vec<_> = glob(config.content_dir.join("*").to_str().unwrap()).unwrap().collect();
-    let template = read_to_string(&config.template_dir.join(config.template_fn.as_ref())).expect("The specified template could not be found...");
+    let template = read_to_string(config.template_fn.as_ref()).expect("The specified template could not be found...");
     pages.into_par_iter().for_each(|page| compose(&page.unwrap(), &config, &template, c_prelude.as_str()));
 
     if let Some(dir) = config.docroot_dir {

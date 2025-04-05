@@ -1,6 +1,9 @@
 # Compost (kpw_compose-ng)
 Static site generator with infamous `<c>` tags.
 
+## Features other than `<c>`
+- Thumbnail generator (ImageMagick)
+
 ## Run the example
 Make sure you [have the Rust toolchain installed](https://www.rust-lang.org/learn/get-started) and `gcc` and `convert` (ImageMagick) are available.
 ```sh
@@ -29,7 +32,6 @@ im = "convert"          # ImageMagick
 lib_dir = "./lib/"
 include_dir = "./include/"
 c_dir = "./bin/"
-template_dir = "./templates/"
 content_dir = "./content/"
 output_dir = "./out/"
 copy_year = 2025

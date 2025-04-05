@@ -3,7 +3,6 @@ im = "convert"
 lib_dir = "./lib/"
 include_dir = "./include/"
 c_dir = "./bin/"
-template_dir = "./templates/"
 content_dir = "./content/"
 output_dir = "./out/"
 copy_year = 2025
