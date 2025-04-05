@@ -1,6 +1,10 @@
 # Compost (kpw_compose-ng)
 Static site generator with infamous `<c>` tags.
 
+## Sites using compost
+- [lachrymal.net](https://lachrymal.net/)
+  - <img src="https://lachrymal.net/thumbnails/index.png" width="200">
+
 ## Features other than `<c>`
 - Thumbnail generator (ImageMagick)
 
