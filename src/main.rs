@@ -72,7 +72,7 @@ fn do_c(html: &mut String, basename: &str, config: &Config, c_prelude: &str) {
 }
 
 fn do_typer_tags(contents: &mut String) {
-	let typertags_re = Regex::new(r#"\[(\w+)](?:\s+)?\{([^{}]*)\}"#).unwrap();
+	let typertags_re = Regex::new(r#"\[(\w+)](?:\s+)?\{([\S\s]*)\n\}"#).unwrap();
 	let code_re = Regex::new(r"```.*?```").unwrap();
 
     let mut cit = code_re.find_iter(contents);
