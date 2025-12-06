@@ -72,7 +72,7 @@ fn do_c(html: &mut String, basename: &str, config: &Config, c_prelude: &str) {
 }
 
 fn do_typer_tags(contents: &mut String) {
-	let typertags_re = Regex::new(r#"\[(\w+)](?:\s+)?\{([\S\s]*)\n\}"#).unwrap();
+	let typertags_re = Regex::new(r#"\[(\w+)](?:\s+)?\{([\S\s]*?)\n\}"#).unwrap();
 	let code_re = Regex::new(r"```.*?```").unwrap();
 
     let mut cit = code_re.find_iter(contents);
@@ -117,88 +117,88 @@ fn compose(
     template: &str,
     c_prelude: &str
 ) {
-	let mut contents: String = read_to_string(&filename).unwrap();
+	if let Ok(mut contents) = read_to_string(&filename) {
+        let mut lines = contents.lines();
+        let title = lines.next().unwrap()[2..].to_owned();
+        let description = lines.next().unwrap()[2..].to_owned();
+        let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
+        let thumb = match lines.next() {
+            Some(line) if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
+            _ => {
+                let thumb = format!("{}{basename}.png", config.thumbnails_dir);
+                format!("{}{}", config.root_url, match Command::new(config.im.as_ref())
+                        .arg(config.default_thumb.as_ref())
+                        .arg("(")
+                        .arg("-size").arg("1200x320")
+                        .arg("gradient:transparent-black")
+                        .arg(")")
+                        .arg("-gravity").arg("South")
+                        .arg("-compose").arg("Over")
+                        .arg("-composite")
+                        .arg("(")
+                        .arg("-fill").arg("white")
+                        .arg("-background").arg("transparent")
+                        .arg("-size").arg("1150x150")
+                        .arg("-font").arg(config.font_fn.as_ref())
+                        .arg("-gravity").arg("SouthWest")
+                        .arg(format!("caption:{title}"))
+                        .arg(")")
+                        .arg("-gravity").arg("South")
+                        .arg("-compose").arg("Over")
+                        .arg("-composite")
+                        .arg(config.output_dir.join(&thumb))
+                        .status() {
+                            Ok(_) => thumb.as_str(),
+                            Err(_) => config.default_thumb.as_ref(),
+                        }
+                )
+            },
+        };
 
-	let mut lines = contents.lines();
-	let title = lines.next().unwrap()[2..].to_owned();
-	let description = lines.next().unwrap()[2..].to_owned();
-	let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
-	let thumb = match lines.next() {
-        Some(line) if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
-        _ => {
-            let thumb = format!("{}{basename}.png", config.thumbnails_dir);
-            format!("{}{}", config.root_url, match Command::new(config.im.as_ref())
-                    .arg(config.default_thumb.as_ref())
-                    .arg("(")
-                    .arg("-size").arg("1200x320")
-                    .arg("gradient:transparent-black")
-                    .arg(")")
-                    .arg("-gravity").arg("South")
-                    .arg("-compose").arg("Over")
-                    .arg("-composite")
-                    .arg("(")
-                    .arg("-fill").arg("white")
-                    .arg("-background").arg("transparent")
-                    .arg("-size").arg("1150x150")
-                    .arg("-font").arg(config.font_fn.as_ref())
-                    .arg("-gravity").arg("SouthWest")
-                    .arg(format!("caption:{title}"))
-                    .arg(")")
-                    .arg("-gravity").arg("South")
-                    .arg("-compose").arg("Over")
-                    .arg("-composite")
-                    .arg(config.output_dir.join(&thumb))
-                    .status() {
-                        Ok(_) => thumb.as_str(),
-                        Err(_) => config.default_thumb.as_ref(),
-                    }
-            )
-        },
-    };
+        println!("Composing {} (\"{}\")...", filename.display(), title);
 
-	println!("Composing {} (\"{}\")...", filename.display(), title);
+        contents = Regex::new(r"(?m)^%\s*.*").unwrap().replace_all(&contents, "").to_string();
 
-	contents = Regex::new(r"(?m)^%\s*.*").unwrap().replace_all(&contents, "").to_string();
+        let head_capture = Regex::new(r"(?s)<\#inject_head\#>(.*?)</\#inject_head\#>").unwrap().captures(&contents);
+        let (head_injection, head_range) = match head_capture {
+            Some(head) => (head.get(1).unwrap().as_str().to_string(), Some(head.get(0).unwrap().range())),
+            None => ("".to_string(), None),
+        };
 
-	let head_capture = Regex::new(r"(?s)<\#inject_head\#>(.*?)</\#inject_head\#>").unwrap().captures(&contents);
-    let (head_injection, head_range) = match head_capture {
-        Some(head) => (head.get(1).unwrap().as_str().to_string(), Some(head.get(0).unwrap().range())),
-        None => ("".to_string(), None),
-	};
+        if let Some(r) = head_range {
+            contents.replace_range(r, "");
+        }
 
-    if let Some(r) = head_range {
-        contents.replace_range(r, "");
+        do_typer_tags(&mut contents);
+
+        do_c(&mut contents, &basename, &config, c_prelude);
+
+        let mut html = String::new();
+        pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
+
+        let map = [
+            ("`META_PAGE_TITLE`", html_escape::encode_safe(&title).to_string()),
+            ("`PAGE_TITLE`", title),
+            ("`META_PAGE_DESCRIPTION`", html_escape::encode_safe(&description).to_string()),
+            ("`PAGE_DESCRIPTION`", description),
+            ("`CONTENT`", html),
+            ("`YEAR`", config.copy_year.to_string()),
+            ("`META_THUMBNAIL`", thumb),
+            ("`HEAD_INJECT`", head_injection)
+        ];
+
+        let output_filename = config.output_dir.join(basename.clone() + ".html");
+
+        let mut out = template.to_owned();
+
+        for (key, value) in map {
+            out = out.replace(key, value.as_str());
+        }
+
+        do_c(&mut out, &basename, &config, c_prelude);
+
+        write(output_filename, out).unwrap();
     }
-
-	do_typer_tags(&mut contents);
-
-    do_c(&mut contents, &basename, &config, c_prelude);
-
-    let mut html = String::new();
-    pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&contents));
-
-	let map = [
-    	("`META_PAGE_TITLE`", html_escape::encode_safe(&title).to_string()),
-        ("`PAGE_TITLE`", title),
-		("`META_PAGE_DESCRIPTION`", html_escape::encode_safe(&description).to_string()),
-		("`PAGE_DESCRIPTION`", description),
-		("`CONTENT`", html),
-		("`YEAR`", config.copy_year.to_string()),
-		("`META_THUMBNAIL`", thumb),
-		("`HEAD_INJECT`", head_injection)
-    ];
-
-	let output_filename = config.output_dir.join(basename.clone() + ".html");
-
-    let mut out = template.to_owned();
-
-    for (key, value) in map {
-        out = out.replace(key, value.as_str());
-    }
-
-	do_c(&mut out, &basename, &config, c_prelude);
-
-    write(output_filename, out).unwrap();
 }
 
 fn main() -> Result<(), std::io::Error> {
