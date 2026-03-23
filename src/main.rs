@@ -211,6 +211,7 @@ fn write_rss(
     pages: &Vec<(&PathBuf, String, DateTime<Utc>)>
 ) {
     println!("Writing {}...", config.rss_path.display());
+    let fname = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+\.xml)").unwrap().captures(config.rss_path.to_str().unwrap()).unwrap().get(2).unwrap().as_str();
     let out = format!(r#"<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
         <channel>
@@ -227,7 +228,7 @@ fn write_rss(
     config.site_desc,
     config.root_url,
     chrono::offset::Utc::now().to_rfc2822(),
-    config.root_url, config.rss_path.display(),
+    config.root_url, fname,
     pages.iter().rev().filter_map(|(fname, contents, time)|
         if time.timestamp() == 0 {
             None
