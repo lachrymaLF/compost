@@ -1,10 +1,10 @@
 use std::env::{current_exe, set_current_dir, args};
 use std::fs::{create_dir, remove_file, remove_dir_all, read_to_string, write};
 use std::borrow::Cow;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use dateparser::parse;
-use chrono::Datelike;
+use chrono::{Datelike, DateTime, Utc};
 use glob::glob;
 use regex::Regex;
 use uuid::Uuid;
@@ -30,6 +30,10 @@ struct Config<'a> {
     prelude_path:   Cow<'a, Path>,
     font_fn:        Cow<'a, str>,
     docroot_dir:    Option<Cow<'a, str>>,
+
+    site_name:      Cow<'a, str>,
+    site_desc:      Cow<'a, str>,
+    rss_path:       Cow<'a, Path>,
 }
 
 fn do_c(html: &mut String, basename: &str, config: &Config, c_prelude: &str) {
@@ -113,7 +117,7 @@ fn do_typer_tags(contents: &mut String) {
 }
 
 fn compose(
-    filename: &Path,
+    filename: &PathBuf,
     contents: &str,
     config: &Config,
     template: &str,
@@ -122,7 +126,7 @@ fn compose(
     let mut lines = contents.lines();
     let title = lines.next().unwrap()[2..].to_owned();
     let description = lines.next().unwrap()[2..].to_owned();
-    let basename: String = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str().to_owned();
+    let basename = Regex::new(r"(?i)(.*/)?([A-Za-z0-9_-]+)\.md").unwrap().captures(filename.to_str().unwrap()).unwrap().get(2).unwrap().as_str();
     lines.next();
     let thumb = match lines.next() {
         Some(line) if Regex::new(r"%\s").unwrap().is_match(line) => line[2..].to_owned(),
@@ -189,7 +193,7 @@ fn compose(
         ("`HEAD_INJECT`", head_injection)
     ];
 
-    let output_filename = config.output_dir.join(basename.clone() + ".html");
+    let output_filename = config.output_dir.join(format!("{basename}.html"));
 
     let mut out = template.to_owned();
 
@@ -202,10 +206,61 @@ fn compose(
     write(output_filename, out).unwrap();
 }
 
+fn write_rss(
+    config: &Config,
+    pages: &Vec<(&PathBuf, String, DateTime<Utc>)>
+) {
+    println!("Writing {}...", config.rss_path.display());
+    let out = format!(r#"
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+        <channel>
+            <title>{}</title>
+            <description>{}</description>
+            <link>{}</link>
+            <lastBuildDate>{}</lastBuildDate>
+            <atom:link href="{}{}" rel="self" type="application/rss+xml" />
+            
+            {}
+        </channel>
+    </rss>"#,
+    config.site_name,
+    config.site_desc,
+    config.root_url,
+    chrono::offset::Utc::now().to_rfc2822(),
+    config.root_url, config.rss_path.display(),
+    pages.iter().filter_map(|(fname, contents, time)|
+        if time.timestamp() == 0 {
+            None
+        } else {
+            let mut lines = contents.lines();
+            let fns = fname.to_str().unwrap();
+            let title = lines.next().unwrap();
+            let desc = lines.next().unwrap();
+            Some(format!(r#"
+                <item>
+                    <title>{}</title>
+                    <description>{}</description>
+                    <link>{}{}.html</link>
+                    <guid>{}{}.html</guid>
+                    <pubDate>{}</pubDate>
+                </item>
+            "#,
+            &title[2..],
+            &desc[2..],
+            config.root_url, &fns[8..fns.len()-3],
+            config.root_url, &fns[8..fns.len()-3],
+            time.to_rfc2822()))
+        }
+    ).collect::<Vec<_>>().join("\n"));
+
+    write(config.output_dir.join(config.rss_path.clone()), out).unwrap();
+}
+
 fn main() -> Result<(), std::io::Error> {
     let config = toml::from_str(read_to_string(args().skip(1).next().as_ref().map_or("compost.toml", String::as_str)).unwrap().as_str()).unwrap_or(Config {
         cc             : Cow::Borrowed("gcc"),
-        im             : Cow::Borrowed("convert"),
+        im             : Cow::Borrowed("magick"),
         lib_dir        : Cow::Borrowed(Path::new("./lib/")),
         include_dir    : Cow::Borrowed(Path::new("./include/")),
         c_dir          : Cow::Borrowed(Path::new("./bin/")),
@@ -219,6 +274,9 @@ fn main() -> Result<(), std::io::Error> {
         default_thumb  : Cow::Borrowed("default.png"),
         prelude_path   : Cow::Borrowed(Path::new("prelude.c")),
         docroot_dir    : None,
+        site_name      : Cow::Borrowed("compost"),
+        site_desc      : Cow::Borrowed("Welcome!"),
+        rss_path       : Cow::Borrowed(Path::new("index.xml")),
     });
 
     let c_prelude = read_to_string(&config.prelude_path).expect("Could not find C prelude...");
@@ -242,7 +300,7 @@ fn main() -> Result<(), std::io::Error> {
     _ = remove_dir_all(&config.c_dir);
     create_dir(&config.c_dir).expect("Could not create output directory for C.");
 
-    let fns: Vec<_> = glob(config.content_dir.join("*").to_str().unwrap()).unwrap().collect::<Vec<_>>();
+    let fns: Vec<_> = glob(config.content_dir.join("*.md").to_str().unwrap()).unwrap().collect::<Vec<_>>();
     let mut pages: Vec<_> = fns.par_iter()
     .filter_map(|p| {
         match p {
@@ -274,6 +332,8 @@ fn main() -> Result<(), std::io::Error> {
     );
     
     pages.par_iter().for_each(|(fname, page, _)| compose(fname, page.as_str(), &config, &template, new_c_prelude.as_str()));
+
+    write_rss(&config, &pages);
 
     if let Some(dir) = config.docroot_dir {
         let path = Path::new(dir.as_ref());

@@ -12,6 +12,7 @@
 // Basic types
 typedef unsigned char byte;
 typedef unsigned int uint;
+#include <stdint.h>
 
 /*
  * If a routine using anything from this library fails for some reason, the
