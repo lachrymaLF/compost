@@ -62,4 +62,4 @@ You can extend the markup syntax with custom TyperTags in `content/*.md`, their 
 ```
 Insert your custom routine in `do_typer_tags` in `src/main.rs`.
 
-A simple example where `%TAG_NAME% = note` is given, where it renders `%TAG_CONTENT%` from Markdown into HTML, then substitutes the TyperTag with `<div class="note">%TAG_CONTENT%</div>`.
+A simple example where `%TAG_NAME% = note` is given, where it renders `%TAG_CONTENT%` from Markdown into HTML, then substitutes the TyperTag with `<div class="side-note">%TAG_CONTENT%</div>`.

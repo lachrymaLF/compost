@@ -103,7 +103,7 @@ fn do_typer_tags(contents: &mut String) {
             "note" => {
                 let mut html = String::new();
                 pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new(&tag_body));
-                format!(r#"<div class="note">{html}</div>"#)
+                format!(r#"<div class="side-note">{html}</div>"#)
             },
             _ => tag_body.to_owned(),
         };
@@ -211,8 +211,7 @@ fn write_rss(
     pages: &Vec<(&PathBuf, String, DateTime<Utc>)>
 ) {
     println!("Writing {}...", config.rss_path.display());
-    let out = format!(r#"
-    <?xml version="1.0" encoding="UTF-8" ?>
+    let out = format!(r#"<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
         <channel>
             <title>{}</title>
@@ -229,7 +228,7 @@ fn write_rss(
     config.root_url,
     chrono::offset::Utc::now().to_rfc2822(),
     config.root_url, config.rss_path.display(),
-    pages.iter().filter_map(|(fname, contents, time)|
+    pages.iter().rev().filter_map(|(fname, contents, time)|
         if time.timestamp() == 0 {
             None
         } else {
@@ -252,7 +251,7 @@ fn write_rss(
             config.root_url, &fns[8..fns.len()-3],
             time.to_rfc2822()))
         }
-    ).collect::<Vec<_>>().join("\n"));
+    ).take(10).collect::<Vec<_>>().join("\n"));
 
     write(config.output_dir.join(config.rss_path.clone()), out).unwrap();
 }
