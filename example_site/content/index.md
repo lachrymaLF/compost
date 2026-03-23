@@ -1,5 +1,7 @@
 % Home
 % Welcome to Compost!
+% 2026-03-17 10:00 EDT
+%
 
 ### Welcome!
 <div id="right-box">

@@ -1,5 +1,5 @@
-cc = "gcc"
-im = "convert"
+cc = "clang"
+im = "magick"
 lib_dir = "./lib/"
 include_dir = "./include/"
 c_dir = "./bin/"

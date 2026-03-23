@@ -58,7 +58,7 @@ static inline struct Date GetDateTime()
 
 // We include a little courtesy function for getting the current year, this
 // is kinda nice for copyright info e.g. Copyright (C) 2020 kpworld.xyz
-static inline int PrintCopyrightYear()
+static inline void PrintCopyrightYear()
 {
 	printf("%d", GetDateTime().year);
 }
@@ -71,7 +71,7 @@ static inline int PrintCopyrightYear()
 //
 // H O M E     S T Y L E
 // 
-static inline int PrintArticleTstamp(struct Date dt)
+static inline void PrintArticleTstamp(struct Date dt)
 {
 	char month_buf[10] = {0};
 	switch (dt.month)
